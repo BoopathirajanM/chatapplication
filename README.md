@@ -36,6 +36,13 @@ A real-time chat application built with Spring Boot WebSocket backend and React.
 - **CSS3** - Advanced styling with variables and animations
 - **WebSocket Client** - Real-time communication with server
 - **Responsive Design** - Mobile-first approach
+  
+### Screenshots
+![Image](https://github.com/user-attachments/assets/15e4e5f1-05f9-4d45-9f2a-aedf1f179f54)
+![Image](https://github.com/user-attachments/assets/4873f589-7ccd-4a30-9587-77ec121514dd)
+![Image](https://github.com/user-attachments/assets/c4cf1d2d-cab5-4394-b8ee-d59867f6b207)
+![Image](https://github.com/user-attachments/assets/d6c07584-81de-416f-946a-c3bae90812d4)
+![Image](https://github.com/user-attachments/assets/a12cbf0e-b579-48e2-bbac-1cbbb67b4dc7)
 
 ## 🚀 Getting Started
 
