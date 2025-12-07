@@ -1,12 +1,16 @@
 import React, { useEffect, useState } from 'react'
 import {over} from 'stompjs';
 import SockJS from 'sockjs-client';
+import { SOCKJS_URL } from '../config';
 
 var stompClient =null;
 const ChatRoom = () => {
     const [privateChats, setPrivateChats] = useState(new Map());     
     const [publicChats, setPublicChats] = useState([]); 
     const [tab,setTab] =useState("CHATROOM");
+    const [typingUsers, setTypingUsers] = useState(new Set());
+    const [typingTimeout, setTypingTimeout] = useState(null);
+    const [isCurrentUserTyping, setIsCurrentUserTyping] = useState(false);
     const [userData, setUserData] = useState({
         username: '',
         receivername: '',
@@ -17,16 +21,17 @@ const ChatRoom = () => {
       console.log(userData);
     }, [userData]);
 
-    const connect =()=>{
-        let Sock = new SockJS('http://localhost:8080/ws');
+    const connect = () => {
+        let Sock = new SockJS(SOCKJS_URL);
         stompClient = over(Sock);
-        stompClient.connect({},onConnected, onError);
+        stompClient.connect({}, onConnected, onError);
     }
 
     const onConnected = () => {
         setUserData({...userData,"connected": true});
         stompClient.subscribe('/chatroom/public', onMessageReceived);
         stompClient.subscribe('/user/'+userData.username+'/private', onPrivateMessage);
+        stompClient.subscribe('/chatroom/typing', onTypingReceived);
         userJoin();
     }
 
@@ -68,6 +73,29 @@ const ChatRoom = () => {
         }
     }
 
+    const onTypingReceived = (payload) => {
+        var payloadData = JSON.parse(payload.body);
+        if(payloadData.senderName !== userData.username) {
+            if(payloadData.status === "TYPING") {
+                setTypingUsers(prev => new Set([...prev, payloadData.senderName]));
+                // Remove user from typing after 3 seconds
+                setTimeout(() => {
+                    setTypingUsers(prev => {
+                        const newSet = new Set(prev);
+                        newSet.delete(payloadData.senderName);
+                        return newSet;
+                    });
+                }, 3000);
+            } else if(payloadData.status === "STOP_TYPING") {
+                setTypingUsers(prev => {
+                    const newSet = new Set(prev);
+                    newSet.delete(payloadData.senderName);
+                    return newSet;
+                });
+            }
+        }
+    }
+
     const onError = (err) => {
         console.log(err);
         
@@ -76,9 +104,47 @@ const ChatRoom = () => {
     const handleMessage =(event)=>{
         const {value}=event.target;
         setUserData({...userData,"message": value});
+        
+        // Send typing indicator
+        if (stompClient && value.length > 0) {
+            if (!isCurrentUserTyping) {
+                setIsCurrentUserTyping(true);
+            }
+            sendTypingIndicator("TYPING");
+            
+            // Clear existing timeout
+            if (typingTimeout) {
+                clearTimeout(typingTimeout);
+            }
+            
+            // Set new timeout to stop typing after 2 seconds of inactivity
+            const newTimeout = setTimeout(() => {
+                setIsCurrentUserTyping(false);
+                sendTypingIndicator("STOP_TYPING");
+            }, 2000);
+            
+            setTypingTimeout(newTimeout);
+        } else if (stompClient && value.length === 0) {
+            setIsCurrentUserTyping(false);
+            sendTypingIndicator("STOP_TYPING");
+        }
+    }
+
+    const sendTypingIndicator = (status) => {
+        if (stompClient) {
+            var typingMessage = {
+                senderName: userData.username,
+                status: status
+            };
+            stompClient.send("/app/typing", {}, JSON.stringify(typingMessage));
+        }
     }
     const sendValue=()=>{
             if (stompClient) {
+              // Stop typing when sending message
+              setIsCurrentUserTyping(false);
+              sendTypingIndicator("STOP_TYPING");
+              
               var chatMessage = {
                 senderName: userData.username,
                 message: userData.message,
@@ -153,7 +219,7 @@ const ChatRoom = () => {
                             <small>Public room</small>
                         </div>
                     </li>
-                    {[...privateChats.keys()].map((name,index)=>(
+                    {[...privateChats.keys()].filter(name => name !== userData.username).map((name,index)=>(
                         <li onClick={()=>{setTab(name)}} className={`member ${tab===name && "active"}`} key={index}>
                             <div className="avatar">{name.charAt(0).toUpperCase()}</div>
                             <div>
@@ -169,11 +235,26 @@ const ChatRoom = () => {
                     <h3>General Chat</h3>
                     <span className="status">● {getOnlineCount()} members online</span>
                 </div>
+                {(typingUsers.size > 0 || isCurrentUserTyping) && (
+                    <div className="typing-indicator">
+                        <div className="typing-dots">
+                            <span></span>
+                            <span></span>
+                            <span></span>
+                        </div>
+                        <span className="typing-text">
+                            {isCurrentUserTyping && typingUsers.size === 0 && `${userData.username} is typing...`}
+                            {!isCurrentUserTyping && typingUsers.size > 0 && `${Array.from(typingUsers).join(', ')} ${typingUsers.size === 1 ? 'is' : 'are'} typing...`}
+                            {isCurrentUserTyping && typingUsers.size > 0 && `${userData.username}, ${Array.from(typingUsers).join(', ')} are typing...`}
+                        </span>
+                    </div>
+                )}
                 <ul className="chat-messages">
                     {publicChats.map((chat,index)=>(
                         <li className={`message ${chat.senderName === userData.username && "self"}`} key={index}>
                             {chat.senderName !== userData.username && <div className="avatar">{chat.senderName.charAt(0).toUpperCase()}</div>}
                             <div className="message-content">
+                                {chat.senderName !== userData.username && <div className="message-sender">{chat.senderName}</div>}
                                 <div className="message-data">{chat.message}</div>
                                 <div className="message-time">{formatTime(chat.timestamp)}</div>
                             </div>
@@ -209,6 +290,7 @@ const ChatRoom = () => {
                         <li className={`message ${chat.senderName === userData.username && "self"}`} key={index}>
                             {chat.senderName !== userData.username && <div className="avatar">{chat.senderName.charAt(0).toUpperCase()}</div>}
                             <div className="message-content">
+                                {chat.senderName !== userData.username && <div className="message-sender">{chat.senderName}</div>}
                                 <div className="message-data">{chat.message}</div>
                                 <div className="message-time">{formatTime(chat.timestamp)}</div>
                             </div>

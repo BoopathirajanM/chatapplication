@@ -473,6 +473,14 @@ ul {
   color: rgba(255, 255, 255, 0.8);
 }
 
+/* Message sender name */
+.message-sender {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+}
+
 /* Disabled button styles */
 button:disabled {
   background: var(--text-light);
